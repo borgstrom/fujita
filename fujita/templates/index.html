@@ -88,8 +88,8 @@
             }
 
             #connected {
-                margin-left: 1em;
-                float: right;
+                margin-right: 1em;
+                float: left;
                 color: #d70000;
             }
             #connected.connected {
@@ -99,8 +99,8 @@
     </head>
     <body>
         <div id='top'>
+            <div id='connected'><abbr title="Initializing">●</abbr></div>
             <div id='status'>Status unknown</div>
-            <div id='connected'>●</div>
             <div id='controls'><a href='#'></a></div>
         </div>
         <div id='output'></div>
@@ -110,6 +110,7 @@
                 command_name = '{{ name }}',
                 current_status = 0,
                 $connected = $("#connected"),
+                $connected_abbr = $("#connected abbr"),
                 $controls = $("#controls"),
                 $control = $("#controls a"),
                 $output = $("#output"),
@@ -146,11 +147,13 @@
 
                 status_socket.onopen = function(event) {
                     $connected.addClass('connected');
+                    $connected_abbr.attr('title', 'Connected to Fujita');
                     $controls.show();
                 };
                 status_socket.onclose = status_socket.onerror = function(event) {
                     $status.html("Not connected to Fujita")
                     $connected.removeClass('connected');
+                    $connected_abbr.attr('title', 'Not connected to Fujita');
                     $controls.hide();
                     setTimeout(reconnecting_status_socket, 2000);
                 };
