@@ -1,0 +1,199 @@
+<html>
+    <head>
+        <title>Fujita</title>
+
+        <style type="text/css">
+            /* http://meyerweb.com/eric/tools/css/reset/ */
+            html, body, div, span, applet, object, iframe,
+            h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+            a, abbr, acronym, address, big, cite, code,
+            del, dfn, em, img, ins, kbd, q, s, samp,
+            small, strike, strong, sub, sup, tt, var,
+            b, u, i, center,
+            dl, dt, dd, ol, ul, li,
+            fieldset, form, label, legend,
+            table, caption, tbody, tfoot, thead, tr, th, td,
+            article, aside, canvas, details, embed, 
+            figure, figcaption, footer, header, hgroup, 
+            menu, nav, output, ruby, section, summary,
+            time, mark, audio, video {
+                margin: 0;
+                padding: 0;
+                border: 0;
+                font-size: 100%;
+                font: inherit;
+                vertical-align: baseline;
+            }
+            /* HTML5 display-role reset for older browsers */
+            article, aside, details, figcaption, figure, 
+            footer, header, hgroup, menu, nav, section {
+                display: block;
+            }
+            body {
+                line-height: 1;
+            }
+            ol, ul {
+                list-style: none;
+            }
+            blockquote, q {
+                quotes: none;
+            }
+            blockquote:before, blockquote:after,
+            q:before, q:after {
+                content: '';
+                content: none;
+            }
+            table {
+                border-collapse: collapse;
+                border-spacing: 0;
+            }
+
+            body {
+                font-family: Helvetica Neue, Helvetica, Arial, sans-serif;
+                font-size: 16px;
+            }
+
+            #top {
+                height: 3em;
+                padding: 1em;
+            }
+
+            #status {
+                float: left;
+            }
+            #controls {
+                float: right;
+            }
+
+            #output {
+                position: absolute;
+                top: 3em;
+                bottom: 0px;
+                width: 100%;
+                padding: 1em;
+                background: #002b36;
+                color: #839496;
+            }
+
+            #output .fd-0 {
+                margin: .25em;
+            }
+            #output .fd-1 {
+                margin: .25em;
+                background: #380011;
+            }
+
+            #output .status {
+                margin: 1em 0;
+            }
+
+            #connected {
+                margin-left: 1em;
+                float: right;
+                color: #d70000;
+            }
+            #connected.connected {
+                color: #5f8700;
+            }
+        </style>
+    </head>
+    <body>
+        <div id='top'>
+            <div id='status'>Status unknown</div>
+            <div id='connected'>●</div>
+            <div id='controls'><a href='#'></a></div>
+        </div>
+        <div id='output'></div>
+        <script src='//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js'></script>
+        <script type='text/javascript'>
+            var url_base = location.host,
+                command_name = '{{ name }}',
+                current_status = 0,
+                $connected = $("#connected"),
+                $controls = $("#controls"),
+                $control = $("#controls a"),
+                $output = $("#output"),
+                $status = $("#status");
+
+            function reconnecting_log_socket() {
+                var log_socket = new WebSocket('ws://' + url_base + '/log');
+
+                log_socket.onclose = log_socket.onerror = function(event) {
+                    setTimeout(reconnecting_log_socket, 2000);
+                };
+
+                log_socket.onmessage = function(event) {
+                    var data = JSON.parse(event.data),
+                        $existing = $('#' + data.id, $output),
+                        $newline;
+
+                    if ($existing.length > 0) {
+                        // we've already seen this message
+                        return;
+                    }
+
+                    $newline = $('<div>')
+                        .attr('id', data.id)
+                        .addClass('fd-' + data.fd)
+                        .append(data.line + '<br>');
+
+                    $output.append($newline);
+                };
+            }
+
+            function reconnecting_status_socket() {
+                var status_socket = new WebSocket('ws://' + url_base + '/status');
+
+                status_socket.onopen = function(event) {
+                    $connected.addClass('connected');
+                    $controls.show();
+                };
+                status_socket.onclose = status_socket.onerror = function(event) {
+                    $status.html("Not connected to Fujita")
+                    $connected.removeClass('connected');
+                    $controls.hide();
+                    setTimeout(reconnecting_status_socket, 2000);
+                };
+                status_socket.onmessage = function(event) {
+                    var data = JSON.parse(event.data);
+
+                    $status.html(data.status);
+
+                    current_status = data.code;
+                    update_control();
+                }
+            }
+
+            function update_control() {
+                if (current_status == 0) {
+                    // process is stopped, show run control
+                    $control.text("Start "+command_name).attr('href', 'start/');
+                } else {
+                    // process is running, show stop control
+                    $control.text("Stop "+command_name).attr('href', 'stop/');
+                }
+            }
+
+            $control.on("click", function(event) {
+                if (current_status == 0) {
+                    $output.append($("<div>")
+                        .addClass('status')
+                        .text("--- Starting ---"));
+                    $.post(location.protocol + '//' + location.host + '/start');
+                } else {
+                    $output.append($("<div>")
+                        .addClass('status')
+                        .text("--- Stopping ---"));
+                    $.post(location.protocol + '//' + location.host + '/stop');
+                }
+
+                event.preventDefault();
+                return false;
+            });
+
+            $controls.hide();
+            reconnecting_log_socket();
+            reconnecting_status_socket();
+        </script>
+    </body>
+</html>
