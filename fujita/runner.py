@@ -5,6 +5,9 @@ import uuid
 
 from tornado import ioloop, process
 
+class ActionException(Exception):
+    pass
+
 class Runner(object):
     """
     This interface provides a mechanism for launching a process via a command
@@ -57,6 +60,10 @@ class Runner(object):
         self.process_command = command
         self.process_kwargs = process_kwargs
 
+        self.action = None
+        self.action_name = None
+        self.action_command = None
+
     def start(self):
         if not self.process:
             # start the process and begin reading our streams
@@ -72,6 +79,27 @@ class Runner(object):
     def stop(self):
         if self.process:
             self.process.proc.terminate()
+
+    def run_action(self, name, command):
+        if self.action:
+            errmsg = "Failed to start action %s, " \
+                     "another action is already running (%s)" % (
+                         name,
+                         self.action_name
+                     )
+            logging.error(errmsg)
+            raise ActionException(errmsg)
+
+        logging.info("Starting action: %s" % self.action_name)
+        self.action = process.Subprocess(command, **self.process_kwargs)
+        self.read_line(self.action.stdout, self.handle_stdout)
+        self.read_line(self.action.stderr, self.handle_stderr)
+        self.action.set_exit_callback(self.process_action_exit)
+        self.action_name = name
+        self.action_command = command
+
+    def process_action_exit(self, retcode):
+        self.action = None
 
     def process_exit(self, retcode):
         logging.info("%s exited with return code %d" % (self.name, retcode))
