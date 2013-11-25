@@ -64,6 +64,15 @@
             #controls {
                 float: right;
             }
+            #controls a {
+                margin-left: 0.5em;
+                padding-right: 0.5em;
+                border-right: 1px solid #e4e4e4;
+            }
+            #controls a:last-child {
+                border-right: 0;
+                padding-right: 0;
+            }
 
             #output {
                 position: absolute;
@@ -101,7 +110,9 @@
         <div id='top'>
             <div id='connected'><abbr title="Initializing">●</abbr></div>
             <div id='status'>Status unknown</div>
-            <div id='controls'><a href='#'></a></div>
+            <div id='controls'>
+                {% for action in actions %}<a class='action' href='action/{{ action }}'>{{ action }}</a>{% end %}<a href='#'></a>
+            </div>
         </div>
         <div id='output'></div>
         <script src='//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js'></script>
@@ -112,9 +123,14 @@
                 $connected = $("#connected"),
                 $connected_abbr = $("#connected abbr"),
                 $controls = $("#controls"),
-                $control = $("#controls a"),
+                $control = $("#controls a:last-child"),
+                $actions = $("#controls a.action"),
                 $output = $("#output"),
                 $status = $("#status");
+
+            function build_url(url) {
+                return location.protocol + '//' + location.host + '/' + url;
+            }
 
             function reconnecting_log_socket() {
                 var log_socket = new WebSocket('ws://' + url_base + '/log');
@@ -182,13 +198,22 @@
                     $output.append($("<div>")
                         .addClass('status')
                         .text("--- Starting ---"));
-                    $.post(location.protocol + '//' + location.host + '/start');
+                    $.post(build_url('start'));
                 } else {
                     $output.append($("<div>")
                         .addClass('status')
                         .text("--- Stopping ---"));
-                    $.post(location.protocol + '//' + location.host + '/stop');
+                    $.post(build_url('stop'));
                 }
+
+                event.preventDefault();
+                return false;
+            });
+
+            $actions.on("click", function(event) {
+                var $this = $(this);
+
+                $.post(build_url($this.attr('href')))
 
                 event.preventDefault();
                 return false;

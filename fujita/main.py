@@ -6,7 +6,7 @@ from tornado import ioloop, web
 from tornado.options import define, options, parse_command_line
 
 from .handlers import LogHandler, IndexHandler, StatusHandler, StartHandler, \
-                      StopHandler
+                      StopHandler, ActionHandler
 from .runner import Runner
 
 define("port", type=int, default=5665, help="The port to run on",
@@ -16,6 +16,10 @@ define("command", type=str, help="The command to run",
 define("name", type=str, help="The name of the command, for info purposes",
        default="Command",
        metavar="NAME")
+define("action", type=str, help="Optional extra actions to provide the user, " \
+                                "this can be sepcified multiple times",
+       multiple=True,
+       metavar="NAME:COMMANDLINE")
 
 def main():
     parse_command_line()
@@ -34,6 +38,7 @@ def main():
         (r"/status", StatusHandler),
         (r"/start", StartHandler),
         (r"/stop", StopHandler),
+        (r"/action/([^/]+)", ActionHandler),
         (r"/", IndexHandler),
     ]
     settings = dict(
@@ -45,8 +50,18 @@ def main():
     application = web.Application(handlers, **settings)
     application.listen(options.port)
 
-    # create the Django runner
+    # create the main runner
     application.runner = Runner(options.command, name=options.name)
+
+    # do we have any actions?
+    application.actions = {}
+    for action in options.action:
+        try:
+            name, command = action.split(":", 1)
+        except ValueError:
+            continue
+
+        application.actions[name] = command
 
     logging.info("Starting main IO loop...")
     ioloop.IOLoop.instance().start()
