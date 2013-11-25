@@ -5,7 +5,7 @@ import uuid
 
 from tornado import ioloop, process
 
-class ActionException(Exception):
+class RunnerException(Exception):
     pass
 
 class Runner(object):
@@ -27,9 +27,8 @@ class Runner(object):
     STOPPED = 0
     RUNNING = 1
 
-    def __init__(self, command, name='Command', **process_kwargs):
-        logging.info("Initializing %s Runner: %s" % (name, command))
-        self.name = name
+    def __init__(self):
+        logging.info("Initializing Runner")
 
         # setup our variables used to track callbacks and manage the cache
         self.line_waiters = set()
@@ -38,6 +37,21 @@ class Runner(object):
 
         self.status_waiters = set()
         self.set_status(Runner.STOPPED, "Ready to Start")
+
+        self.process = None
+        self.process_name = None
+        self.process_command = None
+        self.process_kwargs = None
+
+    def start(self, name, command, **process_kwargs):
+        if self.process:
+            errmsg = "Failed to start command %s, " \
+                     "another command is already running (%s)" % (
+                         name,
+                         self.process_name
+                     )
+            logging.error(errmsg)
+            raise RunnerException(errmsg)
 
         # prepare the command & kwargs for the subprocess
         if isinstance(command, list):
@@ -52,59 +66,33 @@ class Runner(object):
 
         process_kwargs.update(dict(
             shell=True,
+            stdin=process.Subprocess.STREAM,
             stdout=process.Subprocess.STREAM,
             stderr=process.Subprocess.STREAM
         ))
 
-        self.process = None
+        self.process_name = name
         self.process_command = command
         self.process_kwargs = process_kwargs
 
-        self.action = None
-        self.action_name = None
-        self.action_command = None
+        # start the process and begin reading our streams
+        logging.info("Starting subprocess %s: %s" % (self.process_name, self.process_command))
+        self.process = process.Subprocess(self.process_command, **self.process_kwargs)
+        self.read_line(self.process.stdout, self.handle_stdout)
+        self.read_line(self.process.stderr, self.handle_stderr)
+        self.set_status(Runner.RUNNING, "%s is running" % self.process_name)
 
-    def start(self):
-        if not self.process:
-            # start the process and begin reading our streams
-            logging.info("Starting subprocess: %s" % self.process_command)
-            self.process = process.Subprocess(self.process_command, **self.process_kwargs)
-            self.read_line(self.process.stdout, self.handle_stdout)
-            self.read_line(self.process.stderr, self.handle_stderr)
-            self.set_status(Runner.RUNNING, "%s is running" % self.name)
-
-            # setup an exit callback
-            self.process.set_exit_callback(self.process_exit)
+        # setup an exit callback
+        self.process.set_exit_callback(self.process_exit)
 
     def stop(self):
         if self.process:
             self.process.proc.terminate()
 
-    def run_action(self, name, command):
-        if self.action:
-            errmsg = "Failed to start action %s, " \
-                     "another action is already running (%s)" % (
-                         name,
-                         self.action_name
-                     )
-            logging.error(errmsg)
-            raise ActionException(errmsg)
-
-        logging.info("Starting action: %s" % self.action_name)
-        self.action = process.Subprocess(command, **self.process_kwargs)
-        self.read_line(self.action.stdout, self.handle_stdout)
-        self.read_line(self.action.stderr, self.handle_stderr)
-        self.action.set_exit_callback(self.process_action_exit)
-        self.action_name = name
-        self.action_command = command
-
-    def process_action_exit(self, retcode):
-        self.action = None
-
     def process_exit(self, retcode):
-        logging.info("%s exited with return code %d" % (self.name, retcode))
+        logging.info("%s exited with return code %d" % (self.process_name, retcode))
         if retcode != signal.SIGTERM:
-            status_msg = "%s is not running (return code %d)" % (self.name, retcode)
+            status_msg = "%s is not running (return code %d)" % (self.process_name, retcode)
         else:
             status_msg = "%s is not running"
         self.set_status(Runner.STOPPED, status_msg)

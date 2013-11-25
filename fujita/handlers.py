@@ -2,13 +2,12 @@ import logging
 
 from tornado import web, websocket
 
-from .runner import ActionException
+from .runner import RunnerException
 
 class IndexHandler(web.RequestHandler):
     def get(self):
         self.render("index.html",
-            name=self.application.runner.name,
-            actions=self.application.actions)
+            commands=self.application.config.sections())
 
 class LogHandler(websocket.WebSocketHandler):
     def open(self):
@@ -39,19 +38,15 @@ class StatusHandler(websocket.WebSocketHandler):
         })
 
 class StartHandler(web.RequestHandler):
-    def post(self):
-        self.application.runner.start()
-        self.write({'status': 'ok'})
+    def post(self, name):
+        command = self.application.config.get(name, 'command')
+        if not command:
+            self.write({'status': 'fail'})
+        else:
+            self.application.runner.start(name, command)
+            self.write({'status': 'ok'})
 
 class StopHandler(web.RequestHandler):
     def post(self):
         self.application.runner.stop()
         self.write({'status': 'ok'})
-
-class ActionHandler(web.RequestHandler):
-    def post(self, action):
-        try:
-            self.application.runner.run_action(action, self.application.actions[action])
-            self.write({'status': 'ok'})
-        except (IndexError, ActionException):
-            self.write({'status': 'fail'})

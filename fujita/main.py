@@ -1,3 +1,4 @@
+import ConfigParser
 import inspect
 import logging
 import os
@@ -6,28 +7,22 @@ from tornado import ioloop, web
 from tornado.options import define, options, parse_command_line
 
 from .handlers import LogHandler, IndexHandler, StatusHandler, StartHandler, \
-                      StopHandler, ActionHandler
+                      StopHandler
 from .runner import Runner
 
 define("port", type=int, default=5665, help="The port to run on",
        metavar="PORT")
-define("command", type=str, help="The command to run",
-       metavar="COMMANDLINE")
-define("name", type=str, help="The name of the command, for info purposes",
-       default="Command",
-       metavar="NAME")
-define("action", type=str, help="Optional extra actions to provide the user, " \
-                                "this can be sepcified multiple times",
-       multiple=True,
-       metavar="NAME:COMMANDLINE")
+define("config", type=str, help="The file that defines the commands to manage",
+       metavar="FILE")
+define("debug", type=bool, default=False, help="Tornado debugging")
 
 def main():
     parse_command_line()
-    if not options.command:
-        print "ERROR: You must specify a command. See --help"
+    if not options.config:
+        print "ERROR: You must specify a config. See --help"
         return
 
-    logging.info("Fujita - Starting up %s" % options.name)
+    logging.info("Fujita - Starting up")
 
     module_dir = os.path.dirname(os.path.abspath(
         inspect.getfile(inspect.currentframe())
@@ -36,13 +31,12 @@ def main():
     handlers = [
         (r"/log", LogHandler),
         (r"/status", StatusHandler),
-        (r"/start", StartHandler),
+        (r"/start/([^/]+)", StartHandler),
         (r"/stop", StopHandler),
-        (r"/action/([^/]+)", ActionHandler),
         (r"/", IndexHandler),
     ]
     settings = dict(
-        debug=True,
+        debug=options.debug,
         template_path=os.path.join(module_dir, "templates"),
     )
 
@@ -50,18 +44,18 @@ def main():
     application = web.Application(handlers, **settings)
     application.listen(options.port)
 
+    # parse our config
+    logging.info("Parsing config...")
+    application.config = ConfigParser.ConfigParser()
+    application.config.read(options.config)
+    commands = application.config.sections()
+    logging.info("Loaded %d commands: %s" % (
+        len(commands),
+        ", ".join(commands)
+    ))
+
     # create the main runner
-    application.runner = Runner(options.command, name=options.name)
-
-    # do we have any actions?
-    application.actions = {}
-    for action in options.action:
-        try:
-            name, command = action.split(":", 1)
-        except ValueError:
-            continue
-
-        application.actions[name] = command
+    application.runner = Runner()
 
     logging.info("Starting main IO loop...")
     ioloop.IOLoop.instance().start()

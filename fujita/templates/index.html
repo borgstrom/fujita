@@ -69,7 +69,7 @@
                 padding-right: 0.5em;
                 border-right: 1px solid #e4e4e4;
             }
-            #controls a:last-child {
+            #controls a.command:last-child {
                 border-right: 0;
                 padding-right: 0;
             }
@@ -77,18 +77,19 @@
             #output {
                 position: absolute;
                 top: 3em;
-                bottom: 0px;
-                width: 100%;
+                bottom: 0;
+                left: 0;
+                right: 0;
                 padding: 1em;
                 background: #002b36;
                 color: #839496;
             }
 
             #output .fd-0 {
-                margin: .25em 0;
+                margin: .33em 0;
             }
             #output .fd-1 {
-                margin: .25em 0;
+                margin: .33em 0;
                 background: #380011;
             }
 
@@ -104,6 +105,17 @@
             #connected.connected {
                 color: #5f8700;
             }
+
+            #input {
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
+            }
+            #input input {
+                width: 100%;
+                font-size: 1.33em;
+            }
         </style>
     </head>
     <body>
@@ -111,20 +123,25 @@
             <div id='connected'><abbr title="Initializing">●</abbr></div>
             <div id='status'>Status unknown</div>
             <div id='controls'>
-                {% for action in actions %}<a class='action' href='action/{{ action }}'>{{ action }}</a>{% end %}<a href='#'></a>
+                {% for command in commands %}<a class='command' href='start/{{ command }}'>{{ command }}</a>{% end %}
+                <a class='stop' href='stop'>Stop</a>
             </div>
         </div>
         <div id='output'></div>
+        <div id='input'><input type='text'></div>
         <script src='//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js'></script>
         <script type='text/javascript'>
             var url_base = location.host,
-                command_name = '{{ name }}',
+                current_name = '',
                 current_status = 0,
+                STOPPED = 0,
+                RUNNING = 1,
                 $connected = $("#connected"),
                 $connected_abbr = $("#connected abbr"),
                 $controls = $("#controls"),
-                $control = $("#controls a:last-child"),
-                $actions = $("#controls a.action"),
+                $commands = $("#controls a.command"),
+                $stop = $("#controls a.stop"),
+                $input = $("#input input"),
                 $output = $("#output"),
                 $status = $("#status");
 
@@ -185,35 +202,44 @@
 
             function update_control() {
                 if (current_status == 0) {
-                    // process is stopped, show run control
-                    $control.text("Start "+command_name).attr('href', 'start/');
+                    // process is stopped
+                    $commands.show();
+                    $stop.hide();
                 } else {
                     // process is running, show stop control
-                    $control.text("Stop "+command_name).attr('href', 'stop/');
+                    $commands.hide();
+                    $stop.html("Stop "+current_name).show();
                 }
             }
 
-            $control.on("click", function(event) {
-                if (current_status == 0) {
+            $commands.on("click", function(event) {
+                var $this = $(this);
+
+                if (current_status == STOPPED) {
+                    current_name = $this.text();
                     $output.append($("<div>")
                         .addClass('status')
-                        .text("--- Starting ---"));
-                    $.post(build_url('start'));
+                        .text("--- Starting "+current_name+" ---"));
+                    $.post(build_url($this.attr('href')));
                 } else {
-                    $output.append($("<div>")
-                        .addClass('status')
-                        .text("--- Stopping ---"));
-                    $.post(build_url('stop'));
+                    alert(current_name+' is already running. Stop it first.');
                 }
 
                 event.preventDefault();
                 return false;
             });
 
-            $actions.on("click", function(event) {
+            $stop.on("click", function(event) {
                 var $this = $(this);
 
-                $.post(build_url($this.attr('href')))
+                if (current_status == RUNNING) {
+                    $output.append($("<div>")
+                        .addClass('status')
+                        .text("--- Stopping "+current_name+" ---"));
+                    $.post(build_url('stop'));
+                } else {
+                    alert('Nothing is running');
+                }
 
                 event.preventDefault();
                 return false;
